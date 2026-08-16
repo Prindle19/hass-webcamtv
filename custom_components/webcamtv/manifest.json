@@ -1,0 +1,13 @@
+{
+  "domain": "webcamtv",
+  "name": "webcamtv",
+  "codeowners": ["@Prindle19"],
+  "config_flow": true,
+  "documentation": "https://github.com/Prindle19/hass-webcamtv",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/Prindle19/hass-webcamtv/issues",
+  "requirements": [],
+  "version": "1.1.0",
+  "zeroconf": ["_webcamtv._tcp.local."]
+}

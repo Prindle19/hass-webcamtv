@@ -1,0 +1,25 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Connect to webcamtv",
+        "description": "Enter the hostname or IP address of the webcamtv appliance on your network.",
+        "data": {
+          "host": "Host"
+        }
+      },
+      "confirm": {
+        "title": "Add webcamtv",
+        "description": "Add {name} ({host}) to Home Assistant?"
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach the appliance. Check the host and that the device is online."
+    },
+    "abort": {
+      "already_configured": "This webcamtv appliance is already configured.",
+      "cannot_connect": "Could not reach the discovered appliance."
+    }
+  }
+}
