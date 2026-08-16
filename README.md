@@ -28,9 +28,12 @@ Assistant.
 `config/custom_components/` directory and restart.
 
 After the restart, Settings → Devices & Services shows **webcamtv
-discovered** — click *Configure* and confirm. If mDNS doesn't cross your
-VLANs, use *Add Integration → webcamtv* and enter `webcamtv.local` (or the
-device's IP).
+discovered** — click *Configure* and confirm. If no card appears, use *Add
+Integration → webcamtv* and enter the device's **IP address** (from your
+router, or `ping webcamtv.local` on a laptop). Many Home Assistant installs
+run in a container that can't resolve `.local` mDNS names, so entering
+`webcamtv.local` there may fail with "Could not reach the appliance" even
+though the device is online.
 
 ## Automations
 
