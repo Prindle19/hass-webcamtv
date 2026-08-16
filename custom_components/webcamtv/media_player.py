@@ -29,6 +29,46 @@ from .coordinator import WebcamtvCoordinator
 
 PLAYLIST_ID = "playlist:"
 CAMERA_ID = "camera:"
+CAMERA_GROUP_ID = "cameras:"
+
+# Same grouping as the appliance's admin UI: beach cams by state (this order),
+# anything unknown under Other, and Camelback Resort as its own group.
+STATE_GROUPS = [
+    ("NJ", "New Jersey"),
+    ("NC", "North Carolina"),
+    ("VA", "Virginia"),
+    ("SC", "South Carolina"),
+    ("MD", "Maryland"),
+    ("OR", "Oregon"),
+    ("FL", "Florida"),
+    ("NY", "New York"),
+]
+
+
+def _camera_groups(cameras: list[dict]) -> list[tuple[str, str, list[dict]]]:
+    """Ordered [(content_id, label, cameras)], alphabetical within each group."""
+
+    def is_camelback(cam: dict) -> bool:
+        provider = cam.get("provider")
+        if provider is not None:
+            return provider == "wetmet"
+        return cam.get("state") == "PA"  # pre-1.1.1 appliances omit provider
+
+    by_name = lambda cam: cam.get("name", "")
+    beach = [c for c in cameras if not is_camelback(c)]
+    known = {abbr for abbr, _ in STATE_GROUPS}
+    groups = []
+    for abbr, label in STATE_GROUPS:
+        cams = sorted((c for c in beach if c.get("state") == abbr), key=by_name)
+        if cams:
+            groups.append((CAMERA_GROUP_ID + abbr, label, cams))
+    other = sorted((c for c in beach if c.get("state") not in known), key=by_name)
+    if other:
+        groups.append((CAMERA_GROUP_ID + "other", "Other", other))
+    camelback = sorted((c for c in cameras if is_camelback(c)), key=by_name)
+    if camelback:
+        groups.append((CAMERA_GROUP_ID + "camelback", "Camelback Resort", camelback))
+    return groups
 
 
 async def async_setup_entry(
@@ -167,10 +207,21 @@ class WebcamtvMediaPlayer(CoordinatorEntity[WebcamtvCoordinator], MediaPlayerEnt
                 "cameras",
                 "Cameras",
                 [
-                    _leaf(CAMERA_ID + c["id"], c["name"], MediaClass.VIDEO)
-                    for c in self._cameras
+                    _folder(group_id, label, None)
+                    for group_id, label, _ in _camera_groups(self._cameras)
                 ],
             )
+        if media_content_id and media_content_id.startswith(CAMERA_GROUP_ID):
+            for group_id, label, cams in _camera_groups(self._cameras):
+                if group_id == media_content_id:
+                    return _folder(
+                        group_id,
+                        label,
+                        [
+                            _leaf(CAMERA_ID + c["id"], c["name"], MediaClass.VIDEO)
+                            for c in cams
+                        ],
+                    )
         return _folder(
             "root",
             self._status.get("name") or DEFAULT_NAME,
