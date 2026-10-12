@@ -5,12 +5,20 @@ to drive it) plus every individual camera. Transport controls map to the
 player's real modes: pause freezes the current camera, play rejoins the live
 edge, stop blanks the screen, selecting a camera pins it, selecting a playlist
 resumes cycling.
+
+play_media with `announce: true` is an alert: it interrupts whatever is on
+screen for a while (extra.duration, default 30s; repeats extend it) and then
+resumes. The media id can be a HA camera entity (e.g. a UniFi Protect channel;
+its RTSP source is handed to the appliance), a webcamtv camera, or a stream URL.
 """
 from __future__ import annotations
 
 from typing import Any
 
+from homeassistant.components.camera import async_get_stream_source
 from homeassistant.components.media_player import (
+    ATTR_MEDIA_ANNOUNCE,
+    ATTR_MEDIA_EXTRA,
     BrowseMedia,
     MediaClass,
     MediaPlayerEntity,
@@ -20,6 +28,8 @@ from homeassistant.components.media_player import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -30,6 +40,8 @@ from .coordinator import WebcamtvCoordinator
 PLAYLIST_ID = "playlist:"
 CAMERA_ID = "camera:"
 CAMERA_GROUP_ID = "cameras:"
+HA_CAMERA_SOURCE = "media-source://camera/"
+STREAM_SCHEMES = ("rtsp://", "rtsps://", "http://", "https://")
 
 # Same grouping as the appliance's admin UI: beach cams by state (this order),
 # anything unknown under Other, and Camelback Resort as its own group.
@@ -90,6 +102,7 @@ class WebcamtvMediaPlayer(CoordinatorEntity[WebcamtvCoordinator], MediaPlayerEnt
         | MediaPlayerEntityFeature.SELECT_SOURCE
         | MediaPlayerEntityFeature.BROWSE_MEDIA
         | MediaPlayerEntityFeature.PLAY_MEDIA
+        | MediaPlayerEntityFeature.MEDIA_ANNOUNCE
     )
 
     def __init__(self, coordinator: WebcamtvCoordinator, entry: ConfigEntry) -> None:
@@ -178,6 +191,10 @@ class WebcamtvMediaPlayer(CoordinatorEntity[WebcamtvCoordinator], MediaPlayerEnt
         await self.coordinator.async_request_refresh()
 
     async def async_play_media(self, media_type: str, media_id: str, **kwargs: Any) -> None:
+        if kwargs.get(ATTR_MEDIA_ANNOUNCE):
+            await self._async_alert(media_id, kwargs.get(ATTR_MEDIA_EXTRA) or {})
+            await self.coordinator.async_request_refresh()
+            return
         if media_id.startswith(PLAYLIST_ID):
             await self.coordinator.api.set_playlist(media_id[len(PLAYLIST_ID):])
         elif media_id.startswith(CAMERA_ID):
@@ -187,6 +204,37 @@ class WebcamtvMediaPlayer(CoordinatorEntity[WebcamtvCoordinator], MediaPlayerEnt
         else:
             await self.coordinator.api.play_camera(media_id)
         await self.coordinator.async_request_refresh()
+
+    async def _async_alert(self, media_id: str, extra: dict[str, Any]) -> None:
+        secs = extra.get("duration")
+        name = extra.get("title")
+        media_id = media_id.removeprefix(HA_CAMERA_SOURCE)
+        if media_id.startswith("camera."):
+            url = await async_get_stream_source(self.hass, media_id)
+            if not url:
+                raise HomeAssistantError(
+                    f"{media_id} has no stream source (is RTSP enabled for that channel?)"
+                )
+            await self.coordinator.api.alert(
+                url=url, name=name or self._camera_entity_name(media_id), secs=secs
+            )
+        elif media_id.startswith(STREAM_SCHEMES):
+            await self.coordinator.api.alert(url=media_id, name=name, secs=secs)
+        else:
+            await self.coordinator.api.alert(
+                camera_id=media_id.removeprefix(CAMERA_ID), name=name, secs=secs
+            )
+
+    def _camera_entity_name(self, entity_id: str) -> str:
+        """The camera's device name ("Front Porch"), not the channel's
+        ("Front Porch Medium resolution channel")."""
+        entry = er.async_get(self.hass).async_get(entity_id)
+        if entry and entry.device_id:
+            device = dr.async_get(self.hass).async_get(entry.device_id)
+            if device:
+                return device.name_by_user or device.name or entity_id
+        state = self.hass.states.get(entity_id)
+        return state.name if state else entity_id
 
     # ---- media browser ----
 

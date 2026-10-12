@@ -55,3 +55,22 @@ class WebcamtvApi:
     async def command(self, command: str) -> None:
         """Transport control: play | pause | stop."""
         await self._request("POST", "/api/command", {"command": command})
+
+    async def alert(
+        self,
+        *,
+        url: str | None = None,
+        camera_id: str | None = None,
+        name: str | None = None,
+        secs: int | None = None,
+    ) -> None:
+        """Interrupt the screen with a stream for `secs`, then resume.
+
+        `url` is any rtsp(s)/http(s) stream (e.g. a UniFi Protect camera);
+        `camera_id` a webcamtv camera. Repeats extend the timer."""
+        payload: dict[str, Any] = {"name": name, "secs": secs}
+        if url:
+            payload["url"] = url
+        else:
+            payload["id"] = camera_id
+        await self._request("POST", "/api/alert", payload)
